@@ -65,18 +65,25 @@ func GetListeners() (num int, err error) {
 	return
 }
 
-func RunEveryMin() (count int) {
-	count, _ = GetListeners()
-	return
-}
-
-func RunEveryHour() (count int) {
+func RunEveryHour() (count int, err error) {
 	ch := make(chan int)
-	count = RunEveryMin()
-
+	count, err = GetListeners()
 	cr := cron.New(cron.WithLocation(time.Now().Location()))
-	cr.AddFunc("@every 1m", func() { count += RunEveryMin() })
-	cr.AddFunc("@every 59m10s", func() { ch <- 1 })
+	cr.AddFunc("@every 1m", func() {
+		var n int
+		var Err error
+		n, Err = GetListeners()
+
+		for n, Err = GetListeners(); Err != nil && time.Now().Second() < 40; {
+			n, Err = GetListeners()
+			time.Sleep(time.Second * 1)
+		}
+		count += n
+		if err != nil {
+			err = Err
+		}
+	})
+	cr.AddFunc("@every 59m5s", func() { ch <- 1 })
 	cr.Start()
 
 	<-ch
@@ -96,7 +103,7 @@ func InsertDB(db *sql.DB, time time.Time, count int, err bool) (flag error) {
 	return
 }
 
-func CreateDB() *sql.DB {
+func ConnectDB() *sql.DB {
 	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=db_radio_counter sslmode=disable"
 	db, err := sql.Open("pgx", dsn) // *sql.DB
 	if err != nil {
@@ -136,7 +143,7 @@ func ZeroRows(db *sql.DB, TimeNow time.Time) {
 		middle = date.count
 	}
 
-	rand.Seed(12)
+	rand.Seed(1337)
 	for i := 0; i < difference; i++ {
 		InsertDB(db, TimeI, middle+rand.Intn(50), true)
 		TimeI = TimeI.Add(time.Hour * 1)
@@ -144,8 +151,7 @@ func ZeroRows(db *sql.DB, TimeNow time.Time) {
 }
 
 func main() {
-
-	db := CreateDB()
+	db := ConnectDB()
 	defer db.Close()
 
 	TimeNow := time.Now()
@@ -153,13 +159,22 @@ func main() {
 
 	cr := cron.New(cron.WithLocation(time.Now().Location()))
 	cr.AddFunc("@hourly", func() {
-		InsertDB(db, time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), time.Now().Hour(), 0, 0, 0, time.UTC), RunEveryHour(), false)
+		TimeNow = time.Now()
+		fmt.Println("ahahhahah")
+		count, err := RunEveryHour()
+		flag := false
+
+		if err != nil {
+			flag = true
+		}
+		fmt.Printf("time : %v, writed : %v, time : %v\n", TimeNow, count, flag)
+		InsertDB(db, time.Date(TimeNow.Year(), TimeNow.Month(), TimeNow.Day(), TimeNow.Hour(), 0, 0, 0, time.UTC), count, flag)
 	})
+
 	cr.Start()
 	ZeroRows(db, TimeNow)
 	<-ch
 	cr.Stop()
 	fmt.Println("Ending")
-	RunEveryHour()
 
 }
