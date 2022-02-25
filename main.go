@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	_ "github.com/jackc/pgx/stdlib"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/robfig/cron/v3"
 	"log"
 	"math/rand"
@@ -18,6 +20,18 @@ const (
 	RadioHeart = "https://a4.radioheart.ru/api/json?userlogin=user8042&api=current_listeners"
 	MyRadio24  = "http://myradio24.com/users/meganight/status.json"
 )
+
+var getBookCounter = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_request_get_books_count", // metric name
+		Help: "Number of get_books request.",
+	},
+	[]string{"status"}, // labels
+)
+
+func init() {
+	prometheus.MustRegister(getBookCounter)
+}
 
 type dbType struct {
 	id    int
@@ -161,7 +175,11 @@ func ZeroRows(db *sql.DB, TimeNow time.Time) {
 }
 
 func main() {
-	db := ConnectDB()
+	http.Handle("/metrics", promhttp.Handler())
+	getBookCounter.WithLabelValues("status").Inc()
+	println("listening..")
+	http.ListenAndServe(":9100", nil)
+	/*db := ConnectDB()
 	defer db.Close()
 
 	TimeNow := time.Now()
@@ -182,8 +200,11 @@ func main() {
 
 	cr.Start()
 	ZeroRows(db, TimeNow)
+	println("listening..")
+	http.ListenAndServe(":9100", nil)
 	<-ch
 	cr.Stop()
 	fmt.Println("Ending")
+	*/
 
 }

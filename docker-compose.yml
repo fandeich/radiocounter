@@ -22,3 +22,10 @@ services:
       PGADMIN_DEFAULT_PASSWORD: fandeich1987!
     ports:
       - 5050:80
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - "./prometheus.yml:/etc/prometheus/prometheus.yml"
