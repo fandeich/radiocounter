@@ -28,7 +28,9 @@ type dbType struct {
 
 func GetListenersRadioHeart(name string) (num int, err error) {
 	url := RadioHeart
-	var netClient = http.Client{}
+	var netClient = &http.Client{
+		Timeout: time.Second * 20,
+	}
 	res, err := netClient.Get(url)
 	if err != nil {
 		return -1, err
@@ -41,7 +43,9 @@ func GetListenersRadioHeart(name string) (num int, err error) {
 
 func GetListenersMyRadio24(name string) (num int, err error) {
 	url := MyRadio24
-	var netClient = http.Client{}
+	var netClient = &http.Client{
+		Timeout: time.Second * 20,
+	}
 	res, err := netClient.Get(url)
 	if err != nil {
 		return -1, err
@@ -53,8 +57,11 @@ func GetListenersMyRadio24(name string) (num int, err error) {
 }
 
 func GetListeners() (num int, err error) {
+	fmt.Println(time.Now())
 	num1, err1 := GetListenersRadioHeart("listeners")
+	fmt.Println(time.Now())
 	num2, err2 := GetListenersMyRadio24("listeners")
+	fmt.Println(time.Now())
 	if err1 != nil {
 		err = err1
 	}
@@ -62,6 +69,9 @@ func GetListeners() (num int, err error) {
 		err = err2
 	}
 	num = num1 + num2
+	if num < 0 {
+		num = 0
+	}
 	return
 }
 
@@ -160,7 +170,6 @@ func main() {
 	cr := cron.New(cron.WithLocation(time.Now().Location()))
 	cr.AddFunc("@hourly", func() {
 		TimeNow = time.Now()
-		fmt.Println("ahahhahah")
 		count, err := RunEveryHour()
 		flag := false
 
