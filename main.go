@@ -21,16 +21,24 @@ const (
 	MyRadio24  = "http://myradio24.com/users/meganight/status.json"
 )
 
-var getBookCounter = prometheus.NewCounterVec(
+var getError = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "http_request_get_books_count", // metric name
-		Help: "Number of get_books request.",
+		Name: "get_error",
+		Help: "Count of error GetListeners.",
 	},
-	[]string{"status"}, // labels
+	[]string{"status"},
+)
+
+var getCountListeners = prometheus.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "get_count_listeners",
+		Help: "Count listeners",
+	},
 )
 
 func init() {
-	prometheus.MustRegister(getBookCounter)
+	prometheus.MustRegister(getError)
+	prometheus.MustRegister(getCountListeners)
 }
 
 type dbType struct {
@@ -92,22 +100,32 @@ func GetListeners() (num int, err error) {
 func RunEveryHour() (count int, err error) {
 	ch := make(chan int)
 	count, err = GetListeners()
+
+	getCountListeners.Add(float64(count))
+	if err == nil {
+		getError.WithLabelValues("OK").Inc()
+	} else {
+		getError.WithLabelValues("notOK").Inc()
+	}
+
 	cr := cron.New(cron.WithLocation(time.Now().Location()))
 	cr.AddFunc("@every 1m", func() {
 		var n int
 		var Err error
 		n, Err = GetListeners()
-
-		for n, Err = GetListeners(); Err != nil && time.Now().Second() < 40; {
-			n, Err = GetListeners()
-			time.Sleep(time.Second * 1)
-		}
 		count += n
 		if err != nil {
 			err = Err
 		}
+
+		getCountListeners.Set(float64(n))
+		if Err == nil {
+			getError.WithLabelValues("OK").Inc()
+		} else {
+			getError.WithLabelValues("notOK").Inc()
+		}
 	})
-	cr.AddFunc("@every 59m5s", func() { ch <- 1 })
+	cr.AddFunc("@every 59m45s", func() { ch <- 1 })
 	cr.Start()
 
 	<-ch
@@ -173,17 +191,17 @@ func ZeroRows(db *sql.DB, TimeNow time.Time) {
 		TimeI = TimeI.Add(time.Hour * 1)
 	}
 }
-
-func main() {
+func RunMetrics() {
 	http.Handle("/metrics", promhttp.Handler())
-	getBookCounter.WithLabelValues("status").Inc()
 	println("listening..")
 	http.ListenAndServe(":9100", nil)
-	/*db := ConnectDB()
+}
+
+func main() {
+	db := ConnectDB()
 	defer db.Close()
 
 	TimeNow := time.Now()
-	ch := make(chan int)
 
 	cr := cron.New(cron.WithLocation(time.Now().Location()))
 	cr.AddFunc("@hourly", func() {
@@ -200,11 +218,5 @@ func main() {
 
 	cr.Start()
 	ZeroRows(db, TimeNow)
-	println("listening..")
-	http.ListenAndServe(":9100", nil)
-	<-ch
-	cr.Stop()
-	fmt.Println("Ending")
-	*/
-
+	RunMetrics()
 }

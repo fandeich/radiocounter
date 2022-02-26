@@ -8,6 +8,7 @@ services:
     volumes:
       - /Users/fandeich/psqldata:/var/lib/postgresql/data
     environment:
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
@@ -24,7 +25,8 @@ services:
       - 5050:80
 
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:latest
+    restart: always
     ports:
       - "9090:9090"
     volumes:
