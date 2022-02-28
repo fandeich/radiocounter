@@ -21,20 +21,49 @@ const (
 	MyRadio24  = "http://myradio24.com/users/meganight/status.json"
 )
 
-var getError = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Name: "get_error",
-		Help: "Count of error GetListeners.",
-	},
-	[]string{"status"},
+var (
+	getError = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "get_error",
+			Help: "Count of error GetListeners.",
+		},
+		[]string{"status"},
+	)
+
+	getCountListeners = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "get_count_listeners",
+			Help: "Count listeners",
+		},
+	)
+
+	db *sql.DB
 )
 
-var getCountListeners = prometheus.NewGauge(
-	prometheus.GaugeOpts{
-		Name: "get_count_listeners",
-		Help: "Count listeners",
-	},
-)
+func ConnectDB() *sql.DB {
+	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=db_radio_counter sslmode=disable"
+	db, err := sql.Open("pgx", dsn) // *sql.DB
+	if err != nil {
+		log.Fatalf("failed to load driver: %v", err)
+	}
+	if err := db.PingContext(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+
+	return db
+}
+
+func InsertDB(db *sql.DB, time time.Time, count int, err bool) (flag error) {
+	query := `
+			INSERT INTO main (date,counter,err)
+			VALUES ( $1, $2, $3);
+		`
+	result, flag := db.Exec(query, time, count, err)
+	_ = result
+	return
+}
 
 func init() {
 	prometheus.MustRegister(getError)
@@ -79,11 +108,8 @@ func GetListenersMyRadio24(name string) (num int, err error) {
 }
 
 func GetListeners() (num int, err error) {
-	fmt.Println(time.Now())
 	num1, err1 := GetListenersRadioHeart("listeners")
-	fmt.Println(time.Now())
 	num2, err2 := GetListenersMyRadio24("listeners")
-	fmt.Println(time.Now())
 	if err1 != nil {
 		err = err1
 	}
@@ -135,32 +161,20 @@ func RunEveryHour() (count int, err error) {
 	return
 }
 
-func InsertDB(db *sql.DB, time time.Time, count int, err bool) (flag error) {
-	query := `
-			INSERT INTO main (date,counter,err)
-			VALUES ( $1, $2, $3);
-		`
-	result, flag := db.Exec(query, time, count, err)
-	_ = result
-	return
-}
-
-func ConnectDB() *sql.DB {
-	dsn := "host=localhost port=5432 user=postgres password=postgres dbname=db_radio_counter sslmode=disable"
-	db, err := sql.Open("pgx", dsn) // *sql.DB
-	if err != nil {
-		log.Fatalf("failed to load driver: %v", err)
+func Abs(x int) int {
+	if x < 0 {
+		return -x
 	}
-	if err := db.PingContext(context.Background()); err != nil {
-		log.Fatal(err)
-	}
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
-
-	return db
+	return x
 }
-
-func ZeroRows(db *sql.DB, TimeNow time.Time) {
+func Min(lhs, rhs int) int {
+	if lhs < rhs {
+		return lhs
+	} else {
+		return rhs
+	}
+}
+func ZeroRows(TimeNow time.Time) error {
 	query := `
 		select * from main
 		where id = (select max(id) from main)
@@ -178,45 +192,52 @@ func ZeroRows(db *sql.DB, TimeNow time.Time) {
 		date.time = time.Date(date.time.Year(), date.time.Month(), date.time.Day(), date.time.Hour(), 0, 0, 0, time.UTC)
 		TimeNow = time.Date(TimeNow.Year(), TimeNow.Month(), TimeNow.Day(), TimeNow.Hour(), 0, 0, 0, time.UTC)
 
-		TimeI = time.Date(date.time.Year(), date.time.Month(), date.time.Day(), date.time.Hour(), 0, 0, 0, time.UTC)
-		TimeI = TimeI.Add(time.Hour * 1)
+		TimeI = date.time.Add(time.Hour * 1)
 
 		difference = int(TimeNow.Sub(date.time).Hours())
 		middle = date.count
 	}
 
+	CountNow, _ := GetListeners()
+
+	CountNow = CountNow * 15
 	rand.Seed(1337)
 	for i := 0; i < difference; i++ {
-		InsertDB(db, TimeI, middle+rand.Intn(50), true)
+		InsertDB(db, TimeI, Min(middle, CountNow)+rand.Intn(Abs(CountNow-middle)), true)
 		TimeI = TimeI.Add(time.Hour * 1)
 	}
+	return nil
 }
+
 func RunMetrics() {
 	http.Handle("/metrics", promhttp.Handler())
 	println("listening..")
+	getError.WithLabelValues("OK").Inc()
 	http.ListenAndServe(":9100", nil)
 }
 
 func main() {
-	db := ConnectDB()
+
+	for db = ConnectDB(); db == nil; {
+		db = ConnectDB()
+	}
 	defer db.Close()
 
 	TimeNow := time.Now()
 
 	cr := cron.New(cron.WithLocation(time.Now().Location()))
 	cr.AddFunc("@hourly", func() {
-		TimeNow = time.Now()
+		TimeNow = time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), time.Now().Hour(), 0, 0, 0, time.UTC)
 		count, err := RunEveryHour()
 		flag := false
-
 		if err != nil {
 			flag = true
 		}
-		fmt.Printf("time : %v, writed : %v, time : %v\n", TimeNow, count, flag)
-		InsertDB(db, time.Date(TimeNow.Year(), TimeNow.Month(), TimeNow.Day(), TimeNow.Hour(), 0, 0, 0, time.UTC), count, flag)
+		fmt.Printf("time : %v, writed : %v, err : %v\n", TimeNow, count, flag)
+		ZeroRows(TimeNow.Add(-time.Minute * 30))
+		InsertDB(db, TimeNow, count, flag)
 	})
-
 	cr.Start()
-	ZeroRows(db, TimeNow)
+
 	RunMetrics()
 }

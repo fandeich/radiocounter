@@ -3,6 +3,7 @@ version: '3.1'
 services:
 
   db:
+    container_name: dbRadiocounter
     image: postgres
     restart: always
     volumes:
@@ -15,7 +16,7 @@ services:
       - 5432:5432
 
   pgadmin:
-    container_name: pgadmin4_radio_counter
+    container_name: pgadmin4Radiocounter
     image: dpage/pgadmin4
     restart: always
     environment:
@@ -25,6 +26,7 @@ services:
       - 5050:80
 
   prometheus:
+    container_name: prom
     image: prom/prometheus:latest
     restart: always
     ports:
