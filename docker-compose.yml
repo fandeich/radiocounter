@@ -26,10 +26,17 @@ services:
       - 5050:80
 
   prometheus:
-    container_name: prom
+    container_name: prometheusRadiocounter
     image: prom/prometheus:latest
     restart: always
     ports:
       - "9090:9090"
     volumes:
       - "./prometheus.yml:/etc/prometheus/prometheus.yml"
+
+  jaeger:
+    container_name: jaegerRadiocounter
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "127.0.0.1:6831:6831/udp"
+      - "16686:16686"
