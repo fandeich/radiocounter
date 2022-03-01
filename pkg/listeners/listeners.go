@@ -36,6 +36,7 @@ func GetListenersRadioHeart(ctx context.Context, name string) (int, error) {
 	res, err := netClient.Do(req)
 	if err != nil {
 		ext.Error.Set(span, true)
+		span.SetTag("CountListeners", 0)
 		return -1, err
 	}
 	ext.Error.Set(span, false)
@@ -43,7 +44,7 @@ func GetListenersRadioHeart(ctx context.Context, name string) (int, error) {
 	var result map[string]interface{}
 	json.NewDecoder(res.Body).Decode(&result)
 	num, _ := strconv.Atoi(result[name].(string))
-
+	span.SetTag("CountListeners", num)
 	return num, err
 }
 
@@ -64,6 +65,7 @@ func GetListenersMyRadio24(ctx context.Context, name string) (int, error) {
 	res, err := netClient.Do(req)
 	if err != nil {
 		ext.Error.Set(span, true)
+		span.SetTag("CountListeners", 0)
 		return -1, err
 	}
 	ext.Error.Set(span, false)
@@ -71,7 +73,7 @@ func GetListenersMyRadio24(ctx context.Context, name string) (int, error) {
 	var result map[string]interface{}
 	json.NewDecoder(res.Body).Decode(&result)
 	num := int(result[name].(float64))
-
+	span.SetTag("CountListeners", num)
 	return num, err
 }
 
