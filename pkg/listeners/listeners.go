@@ -16,7 +16,7 @@ const (
 	MyRadio24  = "http://myradio24.com/users/meganight/status.json"
 )
 
-func GetListenersRadioHeart(ctx context.Context, name string) (num int, err error) {
+func GetListenersRadioHeart(ctx context.Context, name string) (int, error) {
 	ctx, span := tracing.MakeSpanGet(ctx, "MyRadio24")
 	defer span.Finish()
 
@@ -42,12 +42,12 @@ func GetListenersRadioHeart(ctx context.Context, name string) (num int, err erro
 
 	var result map[string]interface{}
 	json.NewDecoder(res.Body).Decode(&result)
-	num, _ = strconv.Atoi(result[name].(string))
+	num, _ := strconv.Atoi(result[name].(string))
 
-	return
+	return num, err
 }
 
-func GetListenersMyRadio24(ctx context.Context, name string) (num int, err error) {
+func GetListenersMyRadio24(ctx context.Context, name string) (int, error) {
 	ctx, span := tracing.MakeSpanGet(ctx, "MyRadio24")
 	defer span.Finish()
 	url := MyRadio24
@@ -70,9 +70,9 @@ func GetListenersMyRadio24(ctx context.Context, name string) (num int, err error
 
 	var result map[string]interface{}
 	json.NewDecoder(res.Body).Decode(&result)
-	num = int(result[name].(float64))
+	num := int(result[name].(float64))
 
-	return
+	return num, err
 }
 
 func GetListeners(ctx context.Context) (num int, err error) {

@@ -38,17 +38,15 @@ func init() {
 	prometheus.MustRegister(getCountListeners)
 }
 
-func RunEveryHour(ctx context.Context) (count int, err error) {
+func RunEveryHour(ctx context.Context) (int, error) {
 	ctx, span := tracing.MakeSpanGet(ctx, "EveryHour")
 	defer span.Finish()
 
 	ch := make(chan int)
-	count, err = listeners.GetListeners(ctx)
+	count, err := listeners.GetListeners(ctx)
 
 	getCountListeners.Set(float64(count))
 	if err == nil {
-		getError.WithLabelValues("OK").Inc()
-	} else {
 		getError.WithLabelValues("notOK").Inc()
 	}
 
@@ -63,9 +61,7 @@ func RunEveryHour(ctx context.Context) (count int, err error) {
 		}
 
 		getCountListeners.Set(float64(n))
-		if Err == nil {
-			getError.WithLabelValues("OK").Inc()
-		} else {
+		if Err != nil {
 			getError.WithLabelValues("notOK").Inc()
 		}
 	})
@@ -73,10 +69,10 @@ func RunEveryHour(ctx context.Context) (count int, err error) {
 	cr.Start()
 
 	<-ch
-
-	count = count / 4
 	cr.Stop()
-	return
+	count = count / 4
+
+	return count, err
 }
 
 func Abs(x int) int {
@@ -92,6 +88,7 @@ func Min(lhs, rhs int) int {
 		return rhs
 	}
 }
+
 func ZeroRows(ctx context.Context, TimeNow time.Time) error {
 	ctx, span := tracing.MakeSpanGet(ctx, "ZeroRows")
 	defer span.Finish()
