@@ -45,7 +45,7 @@ func RunEveryHour(ctx context.Context) (count int, err error) {
 	ch := make(chan int)
 	count, err = listeners.GetListeners(ctx)
 
-	getCountListeners.Add(float64(count))
+	getCountListeners.Set(float64(count))
 	if err == nil {
 		getError.WithLabelValues("OK").Inc()
 	} else {
@@ -118,16 +118,19 @@ func ZeroRows(ctx context.Context, TimeNow time.Time) error {
 		difference = int(TimeNow.Sub(date.Time).Hours())
 		middle = date.Count
 	}
+	span.SetTag("Count Hour", difference)
 
 	CountNow, _ := listeners.GetListeners(ctx)
-
 	CountNow = CountNow * 15
+	if CountNow == 0 {
+		return nil
+	}
 	rand.Seed(1337)
 	for i := 0; i < difference; i++ {
 		database.InsertDB(ctx, db, TimeI, Min(middle, CountNow)+rand.Intn(Abs(CountNow-middle)), true)
 		TimeI = TimeI.Add(time.Hour * 1)
 	}
-	span.SetTag("Count Hour", difference)
+
 	return nil
 }
 
@@ -136,8 +139,6 @@ func main() {
 	defer closer.Close()
 
 	ctx := context.Background()
-
-	listeners.GetListeners(ctx)
 
 	TimeNow := time.Now()
 
@@ -155,7 +156,9 @@ func main() {
 		}
 		fmt.Printf("time : %v, writed : %v, err : %v\n", TimeNow, count, flag)
 		ZeroRows(ctx, TimeNow.Add(-time.Minute*30))
-		database.InsertDB(ctx, db, TimeNow, count, flag)
+		if count != 0 {
+			database.InsertDB(ctx, db, TimeNow, count, flag)
+		}
 	})
 	cr.Start()
 

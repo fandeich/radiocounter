@@ -6,7 +6,7 @@ import (
 )
 
 func RunMetrics() {
-	http.Handle("/metric", promhttp.Handler())
+	http.Handle("/metrics", promhttp.Handler())
 	println("listening..")
 	http.ListenAndServe(":9100", nil)
 }

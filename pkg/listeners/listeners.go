@@ -94,9 +94,9 @@ func GetListeners(ctx context.Context) (num int, err error) {
 	span.SetTag("CountListeners", num)
 	span.SetTag("Minute", time.Now().Minute())
 	if err != nil {
-		ext.Error.Set(span, false)
-	} else {
 		ext.Error.Set(span, true)
+	} else {
+		ext.Error.Set(span, false)
 	}
 	return
 }
