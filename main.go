@@ -7,7 +7,6 @@ import (
 	_ "github.com/jackc/pgx/stdlib"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robfig/cron/v3"
-	"math/rand"
 	"radio_counter/pkg/database"
 	"radio_counter/pkg/listeners"
 	"radio_counter/pkg/metric"
@@ -75,74 +74,16 @@ func RunEveryHour(ctx context.Context) (int, error) {
 	return count, err
 }
 
-func Abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-func Min(lhs, rhs int) int {
-	if lhs < rhs {
-		return lhs
-	} else {
-		return rhs
-	}
-}
-
-func ZeroRows(ctx context.Context, TimeNow time.Time) error {
-	ctx, span := tracing.MakeSpanGet(ctx, "ZeroRows")
-	defer span.Finish()
-
-	query := `
-		select * from main
-		where id = (select max(id) from main)
-	`
-	rows, _ := db.Query(query)
-	defer rows.Close()
-
-	difference := 0
-	TimeI := time.Time{}
-	middle := 0
-	if rows.Next() {
-		date := database.DbType{}
-		rows.Scan(&date.Id, &date.Time, &date.Count, &date.Err)
-
-		date.Time = time.Date(date.Time.Year(), date.Time.Month(), date.Time.Day(), date.Time.Hour(), 0, 0, 0, time.UTC)
-		TimeNow = time.Date(TimeNow.Year(), TimeNow.Month(), TimeNow.Day(), TimeNow.Hour(), 0, 0, 0, time.UTC)
-
-		TimeI = date.Time.Add(time.Hour * 1)
-
-		difference = int(TimeNow.Sub(date.Time).Hours())
-		middle = date.Count
-	}
-	span.SetTag("Count Hour", difference)
-
-	CountNow, _ := listeners.GetListeners(ctx)
-	CountNow = CountNow * 15
-	if CountNow == 0 {
-		return nil
-	}
-	rand.Seed(1337)
-	for i := 0; i < difference; i++ {
-		database.InsertDB(ctx, db, TimeI, Min(middle, CountNow)+rand.Intn(Abs(CountNow-middle)), true)
-		TimeI = TimeI.Add(time.Hour * 1)
-	}
-
-	return nil
-}
-
 func main() {
 	closer := tracing.InitJaeger()
 	defer closer.Close()
-
 	ctx := context.Background()
 
 	TimeNow := time.Now()
 
-	for db = database.ConnectDB(ctx, db); db == nil; {
-		db = database.ConnectDB(ctx, db)
-	}
-	defer db.Close()
+	var insert = make(chan (database.DbType))
+	go database.StartDB(ctx, insert)
+
 	cr := cron.New(cron.WithLocation(time.Now().Location()))
 	cr.AddFunc("@hourly", func() {
 		TimeNow = time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), time.Now().Hour(), 0, 0, 0, time.UTC)
@@ -151,14 +92,11 @@ func main() {
 		if err != nil {
 			flag = true
 		}
+		database.ZeroRows(ctx, TimeNow.Add(-time.Minute*30), insert)
 		fmt.Printf("time : %v, writed : %v, err : %v\n", TimeNow, count, flag)
-		ZeroRows(ctx, TimeNow.Add(-time.Minute*30))
-		if count != 0 {
-			database.InsertDB(ctx, db, TimeNow, count, flag)
-		}
+		insert <- database.DbType{0, TimeNow, count, flag}
 	})
+
 	cr.Start()
-
 	metric.RunMetrics()
-
 }
